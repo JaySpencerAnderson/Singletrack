@@ -1,0 +1,318 @@
+<html>
+	<head>
+		<title>Singletrack gray code - mapping transitions</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1">
+	</head>
+	<body>
+		<form id="frm" accept-charset="utf-8" action="javascript:;">
+			<button onclick="onClickAction({value:3})">3</button>
+			<button onclick="onClickAction({value:5})">5</button>
+			<button onclick="onClickAction({value:7})">7</button>
+			<button onclick="counterclockwise(this)">&#x21BA;</button>
+			<button onclick="clockwise(this)">&#x21BB;</button>
+		</form>
+		<table>
+		<tr>
+		<td><hr><canvas id="canvas" width=300 height=300></canvas><hr></td>
+		<td id="text"></td>
+		<td id="list"></td>
+		<td id="original"></td>
+		</tr>
+		</table>
+<script>
+	// Startup
+	var ctx=document.getElementById("canvas").getContext("2d");
+	// Start out with a 3 sensor setup.  
+	var v=new SingleTrackValues(3);
+	v.generate();
+	var snsrs=new SingleTrackSensors(3,ctx);
+
+	snsrs.clear();
+	v.draw();
+	snsrs.draw();
+	snsrs.text(v);
+
+	// Event handlers
+	function onClickAction(dialog){
+		console.log("clicked " + dialog.value);
+
+		var ctx=document.getElementById("canvas").getContext("2d");
+		v=new SingleTrackValues(dialog.value);
+		v.generate();
+		snsrs=new SingleTrackSensors(dialog.value,ctx);
+
+		snsrs.clear();
+		v.draw();
+		snsrs.draw();
+		snsrs.text(v);
+
+	}
+	function counterclockwise(btn){
+		snsrs.ccw();
+	}
+	function clockwise(btn){
+		snsrs.cw();
+	}
+
+
+	// Bit twiddling
+	function bitCount(word){
+		var count=0;
+		while(word != 0){
+			if((word & 1) == 1){
+				count++;
+			}
+			word=word>>1;
+		}
+		return count;
+	}
+	function gray(i){
+		return i^(i>>>1);
+	}
+	function ungray(g){
+		var ug=g;
+		g=(g>>1);
+		while(g){
+			ug=ug^g;
+			g=(g>>1);
+		}
+		return ug;
+	}
+	function binaryText(n,places){
+		if(places < 1){
+			return "";
+		}
+		else if(n&1 == 1){
+			return binaryText(n>>1,places-1) + "1";
+		}
+		else {
+			return binaryText(n>>1,places-1) + "0";
+		}
+	}
+	function listValues(value,bits){
+		buffer="";
+		for(var i=0;i<value.length;i++){
+			buffer+="<li>" + binaryText(value[i],bits);
+		}
+		return "<ul>" + buffer + "</ul>";
+	}
+
+	// Single Track Sensors object
+	function SingleTrackSensors(_sensors,_ctx){
+		this.sensors=_sensors;
+		this.ctx=_ctx;
+
+		this.n=(1<<this.sensors)-2;
+		this.offset=0;
+		this.goal=0;
+
+		this.radius=1024;
+		while((this.radius<<1) > this.ctx.canvas.width && (this.radius<<1) > this.ctx.canvas.height){
+			this.radius=this.radius>>1;
+		}
+		this.radius-=4;
+
+		this.cw = function(){
+			this.setGoal((this.offset+1)%this.n);
+			var timer=setInterval(function(){
+				snsrs.clear();
+				snsrs.increment();
+				snsrs.draw();
+				if(snsrs.metGoal()){
+					clearInterval(timer);
+					snsrs.text(v);
+				}
+			},50);
+		}
+
+		this.ccw = function(){
+			this.setGoal((this.offset+this.n-1)%this.n);
+			var timer=setInterval(function(){
+				snsrs.clear();
+				snsrs.decrement();
+				snsrs.draw();
+				if(snsrs.metGoal()){
+					clearInterval(timer);
+					snsrs.text(v);
+				}
+			},50);
+		}
+		this.setGoal = function(value){
+			this.goal=value;
+		}
+		this.metGoal = function(){
+			return Math.abs(this.offset-this.goal) < 0.001;
+		}
+		this.decrement = function(){
+			this.offset=(this.offset+this.n-0.125)%this.n;
+		}
+		this.increment = function(){
+			this.offset=(this.offset+0.125)%this.n;
+		}
+		this.clear = function(){
+			this.write("#FFFFFF",true);
+		}
+		this.draw = function(){
+			this.write("#000000",false);
+		}
+		this.write = function(style,clear){
+			var x=ctx.canvas.width/2;
+			var y=ctx.canvas.height/2;
+			var width=6;
+			var ptrRadius=this.radius-4;
+			ctx.strokeStyle=style;
+			if(clear){
+				ctx.lineWidth=3;
+			}
+			else {
+				ctx.lineWidth=1;
+			}
+			for(var ns=0;ns<this.sensors;ns++){
+				var angle=((ns/this.sensors)+(this.offset/this.n))*Math.PI*2.0;
+				var xb=x+(ptrRadius*Math.sin(angle));
+				var yb=y-(ptrRadius*Math.cos(angle));
+				var xa=(x+(5*xb))/6;
+				var ya=(y+(5*yb))/6;
+				var xo=-width*Math.cos(angle);
+				var yo=-width*Math.sin(angle);
+
+				if(ns == 0 && style == "#000000"){
+					ctx.strokeStyle="#FF0000";
+				}
+				else if(ns == 1 && style == "#000000"){
+					ctx.strokeStyle="#00FF00";
+				}
+				else if(ns == 2 && style == "#000000"){
+					ctx.strokeStyle="#0000FF";
+				}
+				else {
+					ctx.strokeStyle=style;
+				}
+				ctx.beginPath();
+				ctx.moveTo(xa,ya);
+				ctx.lineTo(xa+xo,ya+yo);
+				ctx.lineTo(xb,yb);
+				ctx.lineTo(xa-xo,ya-yo);
+				ctx.closePath();
+				ctx.stroke();
+			}
+		}
+		this.text = function(v){
+			var s=v.singleTrack();
+			var b=s[this.offset];
+			var incr=s.length/v.sensors;
+			for(var i=1;i<v.sensors;i++){
+				if(s[(this.offset+(i*incr))%s.length] != 0){
+					b|=s[(this.offset+(i*incr))%s.length] << i;
+				}
+			}
+			// Color code HTML
+			var buffer=binaryText(b>>3,v.sensors-3);
+			buffer+="<span style=\"color:#0000FF\">";
+			buffer+=binaryText((b>>2)&1,1);
+			buffer+="</span><span style=\"color:#00FF00\">";
+			buffer+=binaryText((b>>1)&1,1);
+			buffer+="</span><span style=\"color:#FF0000\">";
+			buffer+=binaryText(b&1,1);
+			buffer+="</span>";
+			document.getElementById("text").innerHTML=buffer;
+		}
+	}
+
+	// Single Track object
+	function SingleTrackValues(_sensors){
+		this.value=[];
+		this.sensors=_sensors;
+		this.mask=(1<<this.sensors)-1;
+
+		this.rotate = function(value, shift){
+			return this.mask & ((value<<shift) | (value>>(this.sensors-shift)));
+		}
+		this.isDuplicate = function(v){
+		// The question is whether some rotation of v would have been
+		// produced earlier in the sequence.
+			var uv=ungray(v);
+			for(var shft=1;shft<this.sensors;shft++){
+				var t=this.rotate(v,shft);
+				if((t & 3) == 3 || (t & 3) == 1){
+					if(ungray(t) < uv){
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+		this.generate = function(){
+			this.value=[];
+			this.value.push(1);
+			this.value.push(3);
+			var limit=(1<<(this.sensors-3));
+			for(var i=1;i<limit;i++){
+				var v=gray(i);
+				if(!this.isDuplicate((v<<2)|1)){
+					this.value.unshift((v<<2) | 1);
+					this.value.push((v<<2) | 3);
+				}
+			}
+			// Normalize
+			while(this.value[0] != 1){
+				this.value.push(this.value.shift());
+			}
+			return this.value;
+		}
+		this.singleTrack = function(){
+			// First, figure out how many bits to rotate
+			var n=this.value[0] ^ this.value[this.value.length-1];
+
+			var rn=0;
+			while((n&1) == 0){
+				rn++;
+				n=n>>1;
+			}
+
+			var single=[];
+			for(var i=0;i<this.sensors;i++){
+				var amount=(i*rn)%this.sensors;
+				console.log("Shift " + amount);
+				for(var j=0;j<this.value.length;j++){
+					single.push(this.rotate(this.value[j],amount)&1);
+				}
+			}
+			return single;
+		}
+		this.draw = function(){
+			var ctx=document.getElementById("canvas").getContext("2d");
+			ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+			ctx.strokeStyle="#000000";
+			ctx.lineWidth="4";
+			var x=ctx.canvas.width/2;
+			var y=ctx.canvas.height/2;
+			var angle=0.0;
+			var radius=256;
+			while(radius<<1 > ctx.canvas.width || radius<<1 > ctx.canvas.height){
+				radius = radius >> 1;
+			}
+			var s=this.singleTrack();
+			// Start at the top
+			ctx.beginPath();
+			angle=(-0.5/s.length)*2.0*Math.PI;
+			ctx.moveTo(x+radius*Math.sin(angle), y-radius*Math.cos(angle));
+			for(var i=0;i<s.length;i++){
+				if(s[i] == 1){
+					// Smooth the curve
+					for(var j=1;j<=4;j++){
+						angle=((i+(j-2)/4)/s.length)*2.0*Math.PI;
+						ctx.lineTo(x+radius*Math.sin(angle), y-radius*Math.cos(angle));
+					}
+				}
+				else {
+					angle=((i+0.5)/s.length)*2.0*Math.PI;
+					ctx.moveTo(x+radius*Math.sin(angle), y-radius*Math.cos(angle));
+				}
+			}
+			ctx.stroke();
+		}
+	}
+</script>
+	</body>
+</html>
