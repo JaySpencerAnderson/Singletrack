@@ -14,6 +14,14 @@ So
 The Javascript implementation works for up to 19 sensors.  Beyond that runs into some resource limitations.
 The algorithm is fairly direct and is therefore pretty quick.
 
+The webpage only allows one to choose from 3, 5 or 7 sensors.  11 sensors result in 2046
+values which is just too many to be able to step through them or even see what is going on
+with the graph.
+
+The graph rotates the 3, 5 or 7 sensors within the single track.  Try figuring out which 
+bit will change next (there is a clockwise and counter-clockwise rotation button).  The
+bottom three sensors and bits are color coded.  You should be able to figure out the rest.
+
 As you can tell from the Wikipedia article, Norman Spedding, Hiltgen, Paterson and Brandestini
 figured out this stuff about 20 years before me.  I figured this out on my own with the 5
 sensor result informing me.  I went through a few algorithms before figuring out the implemented
